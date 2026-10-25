@@ -100,6 +100,19 @@ nav button.on{color:var(--sky-dark)}
 .editbar{display:none;background:#fff6e0;border:1px solid #f1d58a;color:#7a5a00}
 .editbar.on{display:flex;align-items:center;gap:10px;justify-content:space-between}
 .editbar span{font-size:14px}
+.rc{position:relative;border-radius:12px;background:var(--sky-soft);margin-bottom:8px;overflow:hidden}
+.rc:before{content:'Corriger \270E';position:absolute;right:16px;top:0;bottom:0;display:flex;align-items:center;font-weight:700;font-size:14px;color:var(--sky-dark)}
+.rr{position:relative;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.rr .who{font-weight:700;font-size:14px;min-width:70px}
+.rr .what{flex:1;min-width:0;font-size:13px}
+.rr .what small{display:block;color:var(--muted);font-size:12px}
+.rr .pr{font-weight:700;font-size:13px;color:var(--muted)}
+.rhint{font-size:12px;color:var(--muted);margin:2px 2px 0}
+.slide{display:none;position:relative;flex:0 0 200px;height:46px;border-radius:23px;background:var(--sky-soft);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+.slide.on{display:block}
+.slide.dis{opacity:.45;pointer-events:none}
+.slide span{position:absolute;top:0;bottom:0;left:0;right:0;display:flex;align-items:center;justify-content:center;padding-left:40px;font-size:13px;font-weight:700;color:var(--sky-dark)}
+.slide .knob{position:absolute;left:3px;top:3px;width:40px;height:40px;border-radius:50%;background:var(--sky);color:#fff;border:0;font-size:20px;line-height:1;cursor:grab;touch-action:none;padding:0}
 .x{border:0;background:transparent;color:#a3acb8;font-size:22px;line-height:1;padding:4px 8px;cursor:pointer}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{padding:9px 6px;text-align:right;border-bottom:1px solid var(--line)}
@@ -209,6 +222,7 @@ tr.tot td{font-weight:800;border-bottom:0;background:#f7f9fc}
 
   <!-- SAISIE -->
   <section id="v-add" class="view on">
+    <div class="card" id="recent" style="display:none"><div class="lbl">Dernières saisies</div><div id="recent-list"></div><p class="rhint">Erreur ? Glisse une ligne vers la gauche pour la corriger.</p></div>
     <div class="card editbar" id="editbar"><span id="edit-txt"></span><button class="btn ghost sm" id="b-cancel-edit">Annuler</button></div>
     <div class="card">
       <div class="row2">
@@ -322,6 +336,7 @@ tr.tot td{font-weight:800;border-bottom:0;background:#f7f9fc}
   <div class="in">
     <div class="sum" id="sum"><b>Aucun repas choisi</b>Choisis un repas dans la liste</div>
     <button class="btn" id="b-save" disabled>Enregistrer</button>
+    <div class="slide" id="slide"><span>Glisse pour confirmer</span><button class="knob" id="knob" aria-label="Glisser pour confirmer la correction">&#9654;</button></div>
   </div>
 </div>
 
@@ -707,7 +722,10 @@ function renderBar(){
     s.appendChild(document.createTextNode(name ? (name + ' · ' + fmt(selPrice())) : 'Indique un prénom · ' + fmt(selPrice())));
   }
   $('b-save').disabled = !((it || editing) && name && $('f-date').value);
-  $('b-save').textContent = editing ? 'Mettre à jour' : 'Enregistrer';
+  var okSave = !!((it || editing) && name && $('f-date').value);
+  $('b-save').style.display = editing ? 'none' : '';
+  $('slide').className = 'slide' + (editing ? ' on' : '') + (editing && !okSave ? ' dis' : '');
+  renderRecent();
   var eb = $('editbar');
   eb.className = 'card editbar' + (editing ? ' on' : '');
   if (editing) $('edit-txt').textContent = 'Correction de la saisie du ' + dateLong(editing.date) + ' (' + editing.name + ')';
@@ -737,6 +755,70 @@ function addEntry(){
   renderList(); renderBar();
 }
 
+var editBack = null;
+function renderRecent(){
+  var box = $('recent-list'), card = $('recent');
+  clear(box);
+  var a = entries.slice().sort(function(x, y){ return x.id < y.id ? 1 : (x.id > y.id ? -1 : 0); }).slice(0, 3);
+  card.style.display = (!a.length || editing) ? 'none' : '';
+  a.forEach(function(e){
+    var wrap = el('div', 'rc');
+    var r = el('div', 'rr');
+    r.appendChild(el('div', 'who', e.name));
+    var w = el('div', 'what');
+    var tt = el('span', '', e.label);
+    if (e.size) tt.appendChild(el('span', 'badge', e.size));
+    w.appendChild(tt);
+    w.appendChild(el('small', '', dateLong(e.date)));
+    r.appendChild(w);
+    r.appendChild(el('div', 'pr', fmt(e.price)));
+    attachSwipe(r, e);
+    wrap.appendChild(r);
+    box.appendChild(wrap);
+  });
+}
+function attachSwipe(row, e){
+  var x0 = 0, dx = 0, on = false;
+  row.onpointerdown = function(ev){
+    on = true; x0 = ev.clientX; dx = 0;
+    try { row.setPointerCapture(ev.pointerId); } catch (z) {}
+  };
+  row.onpointermove = function(ev){
+    if (!on) return;
+    dx = Math.min(0, ev.clientX - x0);
+    row.style.transform = 'translateX(' + dx + 'px)';
+  };
+  row.onpointerup = function(){
+    if (!on) return;
+    on = false; row.style.transform = '';
+    var d = dx; dx = 0;
+    if (d < -70) startEdit(e, null);
+  };
+  row.onpointercancel = function(){ on = false; dx = 0; row.style.transform = ''; };
+}
+function initSlide(){
+  var sl = $('slide'), kn = $('knob'), x0 = 0, dx = 0, on = false;
+  function max(){ return Math.max(sl.clientWidth - 46, 1); }
+  function reset(){ kn.style.transform = ''; dx = 0; on = false; }
+  kn.onpointerdown = function(ev){
+    on = true; x0 = ev.clientX; dx = 0;
+    try { kn.setPointerCapture(ev.pointerId); } catch (z) {}
+  };
+  kn.onpointermove = function(ev){
+    if (!on) return;
+    dx = Math.max(0, Math.min(max(), ev.clientX - x0));
+    kn.style.transform = 'translateX(' + dx + 'px)';
+  };
+  kn.onpointerup = function(){
+    if (!on) return;
+    var done = dx >= max() * 0.85;
+    reset();
+    if (done) addEntry();
+  };
+  kn.onpointercancel = reset;
+  kn.onkeydown = function(ev){ if (ev.key === 'Enter') { ev.preventDefault(); addEntry(); } };
+}
+
 function saveEdit(name, date, it){
   var e = editing, i, idx = -1;
   for (i = 0; i < entries.length; i++) { if (entries[i].id === e.id) { idx = i; break; } }
@@ -749,15 +831,16 @@ function saveEdit(name, date, it){
   entries[idx] = n;
   save(); cloudPushEntry(n);
   toast('Saisie corrigée : ' + name);
+  var back = editBack;
   stopEdit();
-  show('hist');
+  if (back === 'hist') show('hist');
 }
 function stopEdit(){
-  editing = null; sel = null;
+  editing = null; sel = null; editBack = null;
   renderList(); renderBar();
 }
-function startEdit(e){
-  editing = e;
+function startEdit(e, back){
+  editing = e; editBack = back || null;
   $('f-date').value = e.date;
   var has = false;
   team.active.forEach(function(n){ if (n === e.name) has = true; });
@@ -770,6 +853,7 @@ function startEdit(e){
   curCat = e.cat; search = ''; $('f-search').value = '';
   renderCats(); renderList(); renderBar();
   show('add');
+  if (!back) toast('Corrige puis glisse pour confirmer');
 }
 
 /* ---------- Manager : gestion de la carte ---------- */
@@ -922,14 +1006,14 @@ function renderHist(){
       r.appendChild(w);
       var ed = el('button', 'ed', '\u270E');
       ed.setAttribute('aria-label', 'Corriger');
-      ed.onclick = function(){ startEdit(e); };
+      ed.onclick = function(){ startEdit(e, 'hist'); };
       r.appendChild(ed);
       var x = el('button', 'x', '×');
       x.setAttribute('aria-label', 'Supprimer');
       x.onclick = function(){
         if (window.confirm('Supprimer ce repas ?\n' + e.name + ' – ' + e.label + (e.size ? ' (' + e.size + ')' : '') + '\n' + dateLong(e.date))) {
           entries = entries.filter(function(z){ return z.id !== e.id; });
-          save(); cloudRemoveEntry(e.id); fillPersonSelect(); renderHist();
+          save(); cloudRemoveEntry(e.id); fillPersonSelect(); renderHist(); renderRecent();
         }
       };
       r.appendChild(x);
@@ -1514,7 +1598,8 @@ $('f-name').onchange = renderBar;
 $('f-date').onchange = renderBar;
 $('f-search').oninput = function(){ search = this.value; renderList(); };
 $('b-save').onclick = addEntry;
-$('b-cancel-edit').onclick = function(){ stopEdit(); show('hist'); };
+initSlide();
+$('b-cancel-edit').onclick = function(){ var back = editBack; stopEdit(); if (back === 'hist') show('hist'); };
 $('n-add').onclick = function(){ show('add'); };
 $('n-hist').onclick = function(){ show('hist'); };
 $('n-mgr').onclick = function(){ show('mgr'); };
