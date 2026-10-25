@@ -1,7 +1,7 @@
 /* Repas personnel - fonctionnement hors ligne.
    Les pages sont toujours rechargées depuis internet quand c'est possible
    (donc les mises à jour arrivent seules), et gardées en secours sinon. */
-var CACHE = 'repas-personnel-v1';
+var CACHE = 'repas-personnel-v3';
 var SHELL = ['./', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', function (e) {
@@ -28,7 +28,7 @@ self.addEventListener('fetch', function (e) {
 
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req).then(function (res) {
+      fetch(req, {cache: 'no-cache'}).then(function (res) {
         var copy = res.clone();
         caches.open(CACHE).then(function (c) { c.put(req, copy); });
         return res;
