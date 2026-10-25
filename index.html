@@ -96,6 +96,10 @@ nav button.on{color:var(--sky-dark)}
 .ent .what{flex:1;min-width:0;font-size:14px}
 .ent .what small{display:block;color:var(--muted);font-size:12px}
 .badge{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--sky-soft);color:var(--sky-dark);margin-left:4px;vertical-align:1px}
+.ed{border:0;background:transparent;color:var(--sky-dark);font-size:19px;line-height:1;padding:4px 8px;cursor:pointer}
+.editbar{display:none;background:#fff6e0;border:1px solid #f1d58a;color:#7a5a00}
+.editbar.on{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.editbar span{font-size:14px}
 .x{border:0;background:transparent;color:#a3acb8;font-size:22px;line-height:1;padding:4px 8px;cursor:pointer}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{padding:9px 6px;text-align:right;border-bottom:1px solid var(--line)}
@@ -205,6 +209,7 @@ tr.tot td{font-weight:800;border-bottom:0;background:#f7f9fc}
 
   <!-- SAISIE -->
   <section id="v-add" class="view on">
+    <div class="card editbar" id="editbar"><span id="edit-txt"></span><button class="btn ghost sm" id="b-cancel-edit">Annuler</button></div>
     <div class="card">
       <div class="row2">
         <div>
@@ -503,6 +508,7 @@ function save(){
 /* ---------- État de la saisie ---------- */
 var curCat = 'sand';
 var sel = null; // {cat, key, size}
+var editing = null; // saisie en cours de correction
 var search = '';
 var mCat = 'sand';
 
@@ -689,7 +695,10 @@ function renderBar(){
   var s = $('sum'); clear(s);
   var name = $('f-name').value.replace(/\s+/g,' ').replace(/^\s+|\s+$/g,'');
   var it = selItem();
-  if (!it) {
+  if (!it && editing) {
+    s.appendChild(el('b', '', editing.label + (editing.size ? ' (' + editing.size + ')' : '')));
+    s.appendChild(document.createTextNode((name || 'Indique un prénom') + ' · ' + fmt(editing.price) + ' (inchangé)'));
+  } else if (!it) {
     s.appendChild(el('b', '', 'Aucun repas choisi'));
     s.appendChild(document.createTextNode('Choisis un repas dans la liste'));
   } else {
@@ -697,14 +706,19 @@ function renderBar(){
     s.appendChild(el('b', '', t));
     s.appendChild(document.createTextNode(name ? (name + ' · ' + fmt(selPrice())) : 'Indique un prénom · ' + fmt(selPrice())));
   }
-  $('b-save').disabled = !(it && name && $('f-date').value);
+  $('b-save').disabled = !((it || editing) && name && $('f-date').value);
+  $('b-save').textContent = editing ? 'Mettre à jour' : 'Enregistrer';
+  var eb = $('editbar');
+  eb.className = 'card editbar' + (editing ? ' on' : '');
+  if (editing) $('edit-txt').textContent = 'Correction de la saisie du ' + dateLong(editing.date) + ' (' + editing.name + ')';
 }
 
 function addEntry(){
   var name = capName($('f-name').value);
   var date = $('f-date').value;
   var it = selItem();
-  if (!it || !name || !date) return;
+  if ((!it && !editing) || !name || !date) return;
+  if (editing) { saveEdit(name, date, it); return; }
   entries.push({
     id: String(Date.now()) + Math.random().toString(36).slice(2, 6),
     date: date,
@@ -721,6 +735,41 @@ function addEntry(){
   sel = null;
   $('f-name').value = name;
   renderList(); renderBar();
+}
+
+function saveEdit(name, date, it){
+  var e = editing, i, idx = -1;
+  for (i = 0; i < entries.length; i++) { if (entries[i].id === e.id) { idx = i; break; } }
+  if (idx === -1) { toast('Cette saisie n\'existe plus'); stopEdit(); return; }
+  var n = {id: e.id, date: date, name: name, cat: e.cat, code: e.code, label: e.label, size: e.size, price: e.price};
+  // repas modifié : on prend le nouveau repas et son prix actuel ; sinon on garde le prix d'origine
+  if (it && !(sel.cat === e.cat && it.name === e.label && (sel.size || '') === (e.size || ''))) {
+    n.cat = sel.cat; n.code = it.code; n.label = it.name; n.size = sel.size; n.price = selPrice();
+  }
+  entries[idx] = n;
+  save(); cloudPushEntry(n);
+  toast('Saisie corrigée : ' + name);
+  stopEdit();
+  show('hist');
+}
+function stopEdit(){
+  editing = null; sel = null;
+  renderList(); renderBar();
+}
+function startEdit(e){
+  editing = e;
+  $('f-date').value = e.date;
+  var has = false;
+  team.active.forEach(function(n){ if (n === e.name) has = true; });
+  if (!has) { var o = el('option', '', e.name); o.value = e.name; $('f-name').appendChild(o); }
+  $('f-name').value = e.name;
+  sel = null;
+  var a = allItems(e.cat), k = null;
+  for (var i = 0; i < a.length; i++) { if (a[i].name === e.label) { k = a[i].key; break; } }
+  if (k) sel = {cat: e.cat, key: k, size: e.size || ''};
+  curCat = e.cat; search = ''; $('f-search').value = '';
+  renderCats(); renderList(); renderBar();
+  show('add');
 }
 
 /* ---------- Manager : gestion de la carte ---------- */
@@ -871,6 +920,10 @@ function renderHist(){
       w.appendChild(t);
       w.appendChild(el('small', '', CATLABEL[e.cat] + ' · ' + fmt(e.price)));
       r.appendChild(w);
+      var ed = el('button', 'ed', '\u270E');
+      ed.setAttribute('aria-label', 'Corriger');
+      ed.onclick = function(){ startEdit(e); };
+      r.appendChild(ed);
       var x = el('button', 'x', '×');
       x.setAttribute('aria-label', 'Supprimer');
       x.onclick = function(){
@@ -1384,6 +1437,13 @@ function cloudInit(){
       if (!entryOk(e) || pending.del[e.id] || hasEntry(e.id)) return;
       entries.push(e); save(); cloudRefresh();
     });
+    er.on('child_changed', function(snap){
+      var e = snap.val();
+      if (!entryOk(e) || pending.del[e.id] || pending.add[e.id]) return;
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].id === e.id) { entries[i] = e; save(); cloudRefresh(); return; }
+      }
+    });
     er.on('child_removed', function(snap){
       var id = snap.key, n = entries.length;
       entries = entries.filter(function(z){ return z.id !== id; });
@@ -1454,6 +1514,7 @@ $('f-name').onchange = renderBar;
 $('f-date').onchange = renderBar;
 $('f-search').oninput = function(){ search = this.value; renderList(); };
 $('b-save').onclick = addEntry;
+$('b-cancel-edit').onclick = function(){ stopEdit(); show('hist'); };
 $('n-add').onclick = function(){ show('add'); };
 $('n-hist').onclick = function(){ show('hist'); };
 $('n-mgr').onclick = function(){ show('mgr'); };
