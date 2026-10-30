@@ -215,7 +215,7 @@ tr.tot td{font-weight:800;border-bottom:0;background:#f7f9fc}
 <header>
   <svg class="logo" role="img" aria-label="Repas personnel" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#2f9bec"/><circle cx="256" cy="256" r="132" fill="#ffffff"/><circle cx="256" cy="256" r="96" fill="#e6f3fd" stroke="#bfe0f8" stroke-width="6"/><g fill="#ffffff"><rect x="58" y="150" width="8" height="74" rx="4"/><rect x="72" y="150" width="8" height="74" rx="4"/><rect x="86" y="150" width="8" height="74" rx="4"/><path d="M58 214H94V232Q94 252 80 254H72Q58 252 58 232Z"/><rect x="69" y="248" width="14" height="116" rx="7"/><path d="M430 148C464 160 466 232 454 264H430Z"/><rect x="430" y="258" width="16" height="106" rx="8"/></g></svg>
   <h1>Repas personnel</h1>
-  <p><span id="sync"></span> <span class="ver" style="color:#a3acb8;font-size:11px">· v3</span></p>
+  <p><span id="sync"></span> <span class="ver" style="color:#a3acb8;font-size:11px">· v4</span></p>
 </header>
 
 <main>
@@ -471,6 +471,7 @@ var DAYS = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
 /* ---------- Utilitaires ---------- */
 function $(id){ return document.getElementById(id); }
 function pad(n){ return (n < 10 ? '0' : '') + n; }
+function nowHM(){ var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 function todayISO(){ var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
 function fmt(n){ return (Math.round(n * 100) / 100).toFixed(2).replace('.', ',') + ' €'; }
 function el(tag, cls, txt){ var e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined && txt !== null) e.textContent = txt; return e; }
@@ -745,7 +746,8 @@ function addEntry(){
     code: it.code,
     label: it.name,
     size: sel.size,
-    price: selPrice()
+    price: selPrice(),
+    time: nowHM()
   });
   save();
   cloudPushEntry(entries[entries.length - 1]);
@@ -769,7 +771,7 @@ function renderRecent(){
     var tt = el('span', '', e.label);
     if (e.size) tt.appendChild(el('span', 'badge', e.size));
     w.appendChild(tt);
-    w.appendChild(el('small', '', dateLong(e.date)));
+    w.appendChild(el('small', '', dateLong(e.date) + (e.time ? ' · ' + e.time : '')));
     r.appendChild(w);
     r.appendChild(el('div', 'pr', fmt(e.price)));
     attachSwipe(r, e);
@@ -824,6 +826,7 @@ function saveEdit(name, date, it){
   for (i = 0; i < entries.length; i++) { if (entries[i].id === e.id) { idx = i; break; } }
   if (idx === -1) { toast('Cette saisie n\'existe plus'); stopEdit(); return; }
   var n = {id: e.id, date: date, name: name, cat: e.cat, code: e.code, label: e.label, size: e.size, price: e.price};
+  if (e.time) n.time = e.time; // l'heure d'enregistrement d'origine est conservée
   // repas modifié : on prend le nouveau repas et son prix actuel ; sinon on garde le prix d'origine
   if (it && !(sel.cat === e.cat && it.name === e.label && (sel.size || '') === (e.size || ''))) {
     n.cat = sel.cat; n.code = it.code; n.label = it.name; n.size = sel.size; n.price = selPrice();
@@ -1002,7 +1005,7 @@ function renderHist(){
       var t = el('span', '', e.label);
       if (e.size) t.appendChild(el('span', 'badge', e.size));
       w.appendChild(t);
-      w.appendChild(el('small', '', CATLABEL[e.cat] + ' · ' + fmt(e.price)));
+      w.appendChild(el('small', '', (e.time ? e.time + ' · ' : '') + CATLABEL[e.cat] + ' · ' + fmt(e.price)));
       r.appendChild(w);
       var ed = el('button', 'ed', '\u270E');
       ed.setAttribute('aria-label', 'Corriger');
@@ -1344,10 +1347,10 @@ function exportCSV(){
     return a.name.localeCompare(b.name);
   });
   if (!list.length) { toast('Rien à exporter'); return; }
-  var lines = ['Date;Prénom;Catégorie;PLU;Repas;Taille;Prix'];
+  var lines = ['Date;Heure;Prénom;Catégorie;PLU;Repas;Taille;Prix'];
   list.forEach(function(e){
     var p = e.date.split('-');
-    lines.push([p[2] + '/' + p[1] + '/' + p[0], e.name, CATLABEL[e.cat], e.code, e.label, e.size || '', String(e.price).replace('.', ',')].map(csvCell).join(';'));
+    lines.push([p[2] + '/' + p[1] + '/' + p[0], e.time || '', e.name, CATLABEL[e.cat], e.code, e.label, e.size || '', String(e.price).replace('.', ',')].map(csvCell).join(';'));
   });
   download('repas-personnel-' + rr.from + '_' + rr.to + '.csv', 'text/csv;charset=utf-8', '﻿' + lines.join('\r\n'));
 }
