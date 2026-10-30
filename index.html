@@ -99,10 +99,12 @@ nav button.on{color:var(--sky-dark)}
 .ed{border:0;background:transparent;color:var(--sky-dark);font-size:19px;line-height:1;padding:4px 8px;cursor:pointer}
 .editbar{display:none;background:#fff6e0;border:1px solid #f1d58a;color:#7a5a00}
 .editbar.on{display:flex;align-items:center;gap:10px;justify-content:space-between}
-.editbar span{font-size:14px}
-.rc{position:relative;border-radius:12px;background:var(--sky-soft);margin-bottom:8px;overflow:hidden}
+.editbar>span:first-child{font-size:14px}
+.eb{display:flex;gap:6px;flex:none}
+.rc{position:relative;border-radius:12px;background:#eef3f9;margin-bottom:8px;overflow:hidden}
 .rc:before{content:'Corriger \270E';position:absolute;right:16px;top:0;bottom:0;display:flex;align-items:center;font-weight:700;font-size:14px;color:var(--sky-dark)}
-.rr{position:relative;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.rc:after{content:'\2715  Supprimer';position:absolute;left:16px;top:0;bottom:0;display:flex;align-items:center;font-weight:700;font-size:14px;color:var(--red)}
+.rr{position:relative;z-index:1;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .rr .who{font-weight:700;font-size:14px;min-width:70px}
 .rr .what{flex:1;min-width:0;font-size:13px}
 .rr .what small{display:block;color:var(--muted);font-size:12px}
@@ -215,15 +217,15 @@ tr.tot td{font-weight:800;border-bottom:0;background:#f7f9fc}
 <header>
   <svg class="logo" role="img" aria-label="Repas personnel" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#2f9bec"/><circle cx="256" cy="256" r="132" fill="#ffffff"/><circle cx="256" cy="256" r="96" fill="#e6f3fd" stroke="#bfe0f8" stroke-width="6"/><g fill="#ffffff"><rect x="58" y="150" width="8" height="74" rx="4"/><rect x="72" y="150" width="8" height="74" rx="4"/><rect x="86" y="150" width="8" height="74" rx="4"/><path d="M58 214H94V232Q94 252 80 254H72Q58 252 58 232Z"/><rect x="69" y="248" width="14" height="116" rx="7"/><path d="M430 148C464 160 466 232 454 264H430Z"/><rect x="430" y="258" width="16" height="106" rx="8"/></g></svg>
   <h1>Repas personnel</h1>
-  <p><span id="sync"></span> <span class="ver" style="color:#a3acb8;font-size:11px">· v4</span></p>
+  <p><span id="sync"></span> <span class="ver" style="color:#a3acb8;font-size:11px">· v5</span></p>
 </header>
 
 <main>
 
   <!-- SAISIE -->
   <section id="v-add" class="view on">
-    <div class="card" id="recent" style="display:none"><div class="lbl">Dernières saisies</div><div id="recent-list"></div><p class="rhint">Erreur ? Glisse une ligne vers la gauche pour la corriger.</p></div>
-    <div class="card editbar" id="editbar"><span id="edit-txt"></span><button class="btn ghost sm" id="b-cancel-edit">Annuler</button></div>
+    <div class="card" id="recent" style="display:none"><div class="lbl">Dernières saisies</div><div id="recent-list"></div><p class="rhint">Erreur ? Glisse une ligne vers la gauche pour la corriger, ou vers la droite pour la supprimer.</p></div>
+    <div class="card editbar" id="editbar"><span id="edit-txt"></span><span class="eb"><button class="btn danger sm" id="b-del-edit">Supprimer</button> <button class="btn ghost sm" id="b-cancel-edit">Annuler</button></span></div>
     <div class="card">
       <div class="row2">
         <div>
@@ -787,7 +789,7 @@ function attachSwipe(row, e){
   };
   row.onpointermove = function(ev){
     if (!on) return;
-    dx = Math.min(0, ev.clientX - x0);
+    dx = Math.max(-170, Math.min(170, ev.clientX - x0));
     row.style.transform = 'translateX(' + dx + 'px)';
   };
   row.onpointerup = function(){
@@ -795,6 +797,7 @@ function attachSwipe(row, e){
     on = false; row.style.transform = '';
     var d = dx; dx = 0;
     if (d < -70) startEdit(e, null);
+    else if (d > 70) deleteEntry(e);
   };
   row.onpointercancel = function(){ on = false; dx = 0; row.style.transform = ''; };
 }
@@ -837,6 +840,15 @@ function saveEdit(name, date, it){
   var back = editBack;
   stopEdit();
   if (back === 'hist') show('hist');
+}
+function deleteEntry(e, after){
+  var txt = e.name + ' \u2013 ' + e.label + (e.size ? ' (' + e.size + ')' : '') + '\n' + dateLong(e.date) + (e.time ? ' \u00e0 ' + e.time : '');
+  if (!window.confirm('Supprimer cette saisie ?\n' + txt)) return;
+  entries = entries.filter(function(z){ return z.id !== e.id; });
+  save(); cloudRemoveEntry(e.id);
+  fillPersonSelect(); renderHist();
+  toast('Saisie supprim\u00e9e');
+  if (after) after(); else renderRecent();
 }
 function stopEdit(){
   editing = null; sel = null; editBack = null;
@@ -1602,6 +1614,11 @@ $('f-date').onchange = renderBar;
 $('f-search').oninput = function(){ search = this.value; renderList(); };
 $('b-save').onclick = addEntry;
 initSlide();
+$('b-del-edit').onclick = function(){
+  if (!editing) return;
+  var back = editBack;
+  deleteEntry(editing, function(){ stopEdit(); if (back === 'hist') show('hist'); });
+};
 $('b-cancel-edit').onclick = function(){ var back = editBack; stopEdit(); if (back === 'hist') show('hist'); };
 $('n-add').onclick = function(){ show('add'); };
 $('n-hist').onclick = function(){ show('hist'); };
